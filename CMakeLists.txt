@@ -34,6 +34,11 @@ add_executable(pal_person_detector_opencv src/person_detector.cpp)
 target_link_libraries(pal_person_detector_opencv ${catkin_LIBRARIES} /opt/ros/hydro/lib/libopencv_ocl.so )
 
 
+install(DIRECTORY include/
+   DESTINATION ${CATKIN_GLOBAL_INCLUDE_DESTINATION}
+   FILES_MATCHING PATTERN "*.h"
+)
+
 #############
 ## Testing ##
 #############
