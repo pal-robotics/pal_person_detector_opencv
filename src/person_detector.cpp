@@ -45,7 +45,7 @@
 // OpenCV headers
 #include <opencv2/objdetect/objdetect.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
-#include <opencv2/ocl/ocl.hpp>
+//#include <opencv2/ocl/ocl.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
 // Boost headers
@@ -85,7 +85,7 @@ protected:
   bool _useOCL;
 
   boost::scoped_ptr<cv::HOGDescriptor> _hogCPU;
-  boost::scoped_ptr<cv::ocl::HOGDescriptor> _hogOCL;
+  //boost::scoped_ptr<cv::ocl::HOGDescriptor> _hogOCL;
 
   image_transport::ImageTransport _imageTransport;
   image_transport::Subscriber _imageSub;
@@ -101,9 +101,9 @@ PersonDetector::PersonDetector(ros::NodeHandle& nh,
   _imageTransport(nh)
 {  
   if ( _useOCL )
-  {
-    _hogOCL.reset(new cv::ocl::HOGDescriptor);
-    _hogOCL->setSVMDetector( cv::ocl::HOGDescriptor::getPeopleDetector64x128() );
+  {    
+    //_hogOCL.reset(new cv::ocl::HOGDescriptor);
+    //_hogOCL->setSVMDetector( cv::ocl::HOGDescriptor::getPeopleDetector64x128() );
   }
   else
   {
@@ -150,21 +150,21 @@ void PersonDetector::detectPersons(const cv::Mat& img,
                                    std::vector<cv::Rect>& detections)
 { 
   double start = static_cast<double>(cv::getTickCount());
-  if ( _useOCL )
-  {
-    cv::Mat imgGray;
-    cv::cvtColor(img, imgGray, CV_BGR2GRAY);
-    cv::ocl::oclMat imgOCL;
-    imgOCL.upload(imgGray);
-    _hogOCL->detectMultiScale(imgOCL,
-                              detections,
-                              0,                //hit threshold
-                              cv::Size(8,8),    //win stride
-                              cv::Size(0,0),    //padding
-                              1.02,             //scaling
-                              1);               //group threshold
-  }
-  else
+//  if ( _useOCL )
+//  {
+//    cv::Mat imgGray;
+//    cv::cvtColor(img, imgGray, CV_BGR2GRAY);
+//    cv::ocl::oclMat imgOCL;
+//    imgOCL.upload(imgGray);
+//    _hogOCL->detectMultiScale(imgOCL,
+//                              detections,
+//                              0,                //hit threshold
+//                              cv::Size(8,8),    //win stride
+//                              cv::Size(0,0),    //padding
+//                              1.02,             //scaling
+//                              1);               //group threshold
+//  }
+//  else
   {
     _hogCPU->detectMultiScale(img,
                               detections,
@@ -205,11 +205,13 @@ int main(int argc, char **argv)
 
   if ( useOCL )
   {
-    ROS_INFO_STREAM("Creating person detector with OCL support ...");
-    ROS_INFO_STREAM("Initializing OCL device ...");
+    throw std::runtime_error("OCL currently not supported");
 
-    std::vector<cv::ocl::Info> oclinfo;
-    cv::ocl::getDevice(oclinfo);
+    //ROS_INFO_STREAM("Creating person detector with OCL support ...");
+    //ROS_INFO_STREAM("Initializing OCL device ...");
+
+    //std::vector<cv::ocl::Info> oclinfo;
+    //cv::ocl::getDevice(oclinfo);
   }
   else
     ROS_INFO_STREAM("Creating person detector ...");
