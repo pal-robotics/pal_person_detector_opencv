@@ -32,12 +32,15 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-/** \author Jordi Pages. */
+/** \author Jordi Pages <jordi.pages@pal-robotics.com> */
+
+// PAL headers
+#include <pal_detection_msgs/Detections2d.h>
 
 // ROS headers
 #include <ros/ros.h>
-
 #include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
 #include <ros/callback_queue.h>
 #include <sensor_msgs/Image.h>
 #include <image_transport/image_transport.h>
@@ -45,11 +48,11 @@
 // OpenCV headers
 #include <opencv2/objdetect/objdetect.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
-//#include <opencv2/ocl/ocl.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
 // Boost headers
 #include <boost/scoped_ptr.hpp>
+#include <boost/foreach.hpp>
 
 // Std C++ headers
 #include <vector>
@@ -57,7 +60,7 @@
 /**
  * @brief The PersonDetector class encapsulating an image subscriber and the OpenCV's CPU HOG person detector
  *
- * @example rosrun person_detector_opencv person_detector image:=/stereo/right/image
+ * @example rosrun person_detector_opencv person_detector image:=/camera/image _rate:=5 _scale:=0.5
  *
  */
 class PersonDetector
@@ -65,55 +68,60 @@ class PersonDetector
 public:
 
   PersonDetector(ros::NodeHandle& nh,
-                 double imageScaling = 1.0,
-                 bool useOCL = false);
+                 ros::NodeHandle& pnh,
+                 double imageScaling = 1.0);
   virtual ~PersonDetector();
 
 protected:
 
-  ros::NodeHandle _nh;
+  ros::NodeHandle _nh, _pnh;
 
   void imageCallback(const sensor_msgs::ImageConstPtr& msg);
 
   void detectPersons(const cv::Mat& img,
                      std::vector<cv::Rect>& detections);
 
-  void showDetections(cv::Mat& img,
-                      const std::vector<cv::Rect>& detections);
+  void scaleDetections(std::vector<cv::Rect>& detections,
+                       double scaleX, double scaleY) const;
+
+  void publishDetections(const std::vector<cv::Rect>& detections) const;
+
+  void publishDebugImage(cv::Mat& img,
+                         const std::vector<cv::Rect>& detections) const;
 
   double _imageScaling;
-  bool _useOCL;
+  mutable cv_bridge::CvImage _cvImgDebug;
 
   boost::scoped_ptr<cv::HOGDescriptor> _hogCPU;
-  //boost::scoped_ptr<cv::ocl::HOGDescriptor> _hogOCL;
 
-  image_transport::ImageTransport _imageTransport;
+  image_transport::ImageTransport _imageTransport, _privateImageTransport;
   image_transport::Subscriber _imageSub;
+  ros::Time _imgTimeStamp;
+
+  ros::Publisher _detectionPub;
+  image_transport::Publisher _imDebugPub;
 
 };
 
 PersonDetector::PersonDetector(ros::NodeHandle& nh,
-                               double imageScaling,
-                               bool useOCL):
+                               ros::NodeHandle& pnh,
+                               double imageScaling):
   _nh(nh),
+  _pnh(pnh),
   _imageScaling(imageScaling),
-  _useOCL(useOCL),
-  _imageTransport(nh)
+  _imageTransport(nh),
+  _privateImageTransport(pnh)
 {  
-  if ( _useOCL )
-  {    
-    //_hogOCL.reset(new cv::ocl::HOGDescriptor);
-    //_hogOCL->setSVMDetector( cv::ocl::HOGDescriptor::getPeopleDetector64x128() );
-  }
-  else
-  {
-    _hogCPU.reset( new cv::HOGDescriptor );
-    _hogCPU->setSVMDetector( cv::HOGDescriptor::getDefaultPeopleDetector() );
-  }
+
+  _hogCPU.reset( new cv::HOGDescriptor );
+  _hogCPU->setSVMDetector( cv::HOGDescriptor::getDefaultPeopleDetector() );
 
   image_transport::TransportHints transportHint("raw");
 
-  _imageSub = _imageTransport.subscribe("image", 1, &PersonDetector::imageCallback, this, transportHint);
+  _imageSub   = _imageTransport.subscribe("image", 1, &PersonDetector::imageCallback, this, transportHint);
+  _imDebugPub = _privateImageTransport.advertise("debug", 1);
+
+  _detectionPub = _pnh.advertise<pal_detection_msgs::Detections2d>("detections", 1);
 
   cv::namedWindow("person detections");
 }
@@ -127,6 +135,8 @@ void PersonDetector::imageCallback(const sensor_msgs::ImageConstPtr& msg)
 {
   cv_bridge::CvImageConstPtr cvImgPtr;
   cvImgPtr = cv_bridge::toCvShare(msg);
+
+  _imgTimeStamp = msg->header.stamp;
 
   cv::Mat img(static_cast<int>(_imageScaling*cvImgPtr->image.rows),
               static_cast<int>(_imageScaling*cvImgPtr->image.cols),
@@ -143,84 +153,122 @@ void PersonDetector::imageCallback(const sensor_msgs::ImageConstPtr& msg)
 
   detectPersons(img, detections);
 
-  showDetections(img, detections);
+  if ( _imageScaling != 1.0 )
+  {
+    scaleDetections(detections,
+                    static_cast<double>(cvImgPtr->image.cols)/static_cast<double>(img.cols),
+                    static_cast<double>(cvImgPtr->image.rows)/static_cast<double>(img.rows));
+  }
+
+  publishDetections(detections);
+
+  cv::Mat imDebug = cvImgPtr->image.clone();
+  publishDebugImage(imDebug, detections);
 }
+
+void PersonDetector::scaleDetections(std::vector<cv::Rect>& detections,
+                                     double scaleX, double scaleY) const
+{
+  BOOST_FOREACH(cv::Rect& detection, detections)
+  {
+    cv::Rect roi(detection);
+    detection.x      = static_cast<long>(roi.x      * scaleX);
+    detection.y      = static_cast<long>(roi.y      * scaleY);
+    detection.width  = static_cast<long>(roi.width  * scaleX);
+    detection.height = static_cast<long>(roi.height * scaleY);
+  }
+}
+
 
 void PersonDetector::detectPersons(const cv::Mat& img,
                                    std::vector<cv::Rect>& detections)
 { 
   double start = static_cast<double>(cv::getTickCount());
-//  if ( _useOCL )
-//  {
-//    cv::Mat imgGray;
-//    cv::cvtColor(img, imgGray, CV_BGR2GRAY);
-//    cv::ocl::oclMat imgOCL;
-//    imgOCL.upload(imgGray);
-//    _hogOCL->detectMultiScale(imgOCL,
-//                              detections,
-//                              0,                //hit threshold
-//                              cv::Size(8,8),    //win stride
-//                              cv::Size(0,0),    //padding
-//                              1.02,             //scaling
-//                              1);               //group threshold
-//  }
-//  else
-  {
-    _hogCPU->detectMultiScale(img,
-                              detections,
-                              0,                //hit threshold: decrease in order to increase number of detections but also false alarms
-                              cv::Size(8,8),    //win stride
-                              cv::Size(0,0),    //padding 24,16
-                              1.02,             //scaling
-                              1,                //final threshold
-                              false);            //use mean-shift to fuse detections
-  }
+
+  _hogCPU->detectMultiScale(img,
+                            detections,
+                            0,                //hit threshold: decrease in order to increase number of detections but also false alarms
+                            cv::Size(8,8),    //win stride
+                            cv::Size(0,0),    //padding 24,16
+                            1.02,             //scaling
+                            1,                //final threshold
+                            false);            //use mean-shift to fuse detections
+
   double stop = static_cast<double>(cv::getTickCount());
-  ROS_INFO_STREAM("Elapsed time in detectMultiScale: " << 1000.0*(stop-start)/cv::getTickFrequency() << " ms");
+  ROS_DEBUG_STREAM("Elapsed time in detectMultiScale: " << 1000.0*(stop-start)/cv::getTickFrequency() << " ms");
 }
 
-void PersonDetector::showDetections(cv::Mat& img,
-                                    const std::vector<cv::Rect>& detections)
+void PersonDetector::publishDetections(const std::vector<cv::Rect>& detections) const
 {
-  for (unsigned int i = 0; i < detections.size(); ++i)
-    cv::rectangle(img, detections[i], CV_RGB(0,255,0), 2);
+  pal_detection_msgs::Detections2d msg;
+  pal_detection_msgs::Detection2d detection;
 
-  cv::imshow("person detections", img);
-  cv::waitKey(15);
+  msg.header.frame_id = "";
+  msg.header.stamp    = _imgTimeStamp;
+
+  BOOST_FOREACH(const cv::Rect& roi, detections)
+  {
+    detection.x      = roi.x;
+    detection.y      = roi.y;
+    detection.width  = roi.width;
+    detection.height = roi.height;
+
+    msg.detections.push_back(detection);
+  }
+
+  _detectionPub.publish(msg);
+}
+
+void PersonDetector::publishDebugImage(cv::Mat& img,
+                                       const std::vector<cv::Rect>& detections) const
+{
+  //draw detections
+  BOOST_FOREACH(const cv::Rect& roi, detections)
+  {
+    cv::rectangle(img, roi, CV_RGB(0,255,0), 2);
+  }
+
+  if ( img.channels() == 3 && img.depth() == CV_8U )
+    _cvImgDebug.encoding = sensor_msgs::image_encodings::BGR8;
+
+  else if ( img.channels() == 1 && img.depth() == CV_8U )
+    _cvImgDebug.encoding = sensor_msgs::image_encodings::MONO8;
+  else
+    throw std::runtime_error("Error in Detector2dNode::publishDebug: only 24-bit BGR or 8-bit MONO images are currently supported");
+
+  _cvImgDebug.image = img;
+  sensor_msgs::Image imgMsg;
+  imgMsg.header.stamp = _imgTimeStamp;
+  _cvImgDebug.toImageMsg(imgMsg); //copy image data to ROS message
+
+  _imDebugPub.publish(imgMsg);
 }
 
 int main(int argc, char **argv)
 {
   ros::init(argc,argv,"pal_person_detector_opencv"); // Create and name the Node
-  ros::NodeHandle nh;
+  ros::NodeHandle nh, pnh("~");
 
   ros::CallbackQueue cbQueue;
   nh.setCallbackQueue(&cbQueue);
 
   double scale = 1.0;
-  nh.param<double>(nh.getNamespace() + "/pal_person_detector_opencv/scale",   scale,    scale);
+  pnh.param<double>("scale",   scale,    scale);
 
-  bool useOCL = false;
-  nh.param<bool>(nh.getNamespace() + "/pal_person_detector_opencv/useOCL",    useOCL,    useOCL);
+  double freq = 10;
+  pnh.param<double>("rate",   freq,    freq);
 
-  if ( useOCL )
-  {
-    throw std::runtime_error("OCL currently not supported");
+  ROS_INFO_STREAM("Setting image scale factor to: " << scale);
+  ROS_INFO_STREAM("Setting detector max rate to:  " << freq);
+  ROS_INFO(" ");
 
-    //ROS_INFO_STREAM("Creating person detector with OCL support ...");
-    //ROS_INFO_STREAM("Initializing OCL device ...");
+  ROS_INFO_STREAM("Creating person detector ...");
 
-    //std::vector<cv::ocl::Info> oclinfo;
-    //cv::ocl::getDevice(oclinfo);
-  }
-  else
-    ROS_INFO_STREAM("Creating person detector ...");
-
-  PersonDetector detector(nh, scale, useOCL);
+  PersonDetector detector(nh, pnh, scale);
 
   ROS_INFO_STREAM("Spinning to serve callbacks ...");
 
-  ros::Rate rate(20);
+  ros::Rate rate(freq);
   while ( ros::ok() )
   {
     cbQueue.callAvailable();

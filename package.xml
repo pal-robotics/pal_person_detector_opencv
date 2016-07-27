@@ -2,23 +2,21 @@
 <package>
   <name>pal_person_detector_opencv</name>
   <version>0.1.0</version>
-  <description>The pal_person_detector_opencv package</description>
+  <description>Fullbody person detector on RGB images based on OpenCV HoG Adaboost cascade</description>
 
   <maintainer email="jordi.pages@pal-robotics.com">jordi pages</maintainer>
 
-
-  <!-- One license tag required, multiple allowed, one license per tag -->
-  <!-- Commonly used license strings: -->
-  <!--   BSD, MIT, Boost Software License, GPLv2, GPLv3, LGPLv2.1, LGPLv3 -->
   <license>BSD</license>
 
   <buildtool_depend>catkin</buildtool_depend>
   <build_depend>roscpp</build_depend>
   <build_depend>sensor_msgs</build_depend>
+  <build_depend>pal_detection_msgs</build_depend>
   <build_depend>cv_bridge</build_depend>
   <build_depend>image_transport</build_depend>
   <run_depend>roscpp</run_depend>
   <run_depend>sensor_msgs</run_depend>
+  <run_depend>pal_detection_msgs</run_depend>
   <run_depend>cv_bridge</run_depend>
   <run_depend>image_transport</run_depend>
 
