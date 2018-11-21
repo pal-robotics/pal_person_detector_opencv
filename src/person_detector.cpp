@@ -149,7 +149,7 @@ void PersonDetector::imageCallback(const sensor_msgs::ImageConstPtr& msg)
     cv::resize(cvImgPtr->image, img, img.size());
   }
 
-  cv::vector<cv::Rect> detections;
+  std::vector<cv::Rect> detections;
 
   detectPersons(img, detections);
 
