@@ -69,7 +69,7 @@ public:
 
   PersonDetector(ros::NodeHandle& nh,
                  ros::NodeHandle& pnh,
-                 const double &imageScaling, const std::string &topic, const std::string &transport);
+                 double imageScaling = 1.0, const std::string &topic, const std::string &transport);
   virtual ~PersonDetector();
 
 protected:
@@ -105,7 +105,9 @@ protected:
 
 PersonDetector::PersonDetector(ros::NodeHandle& nh,
                                ros::NodeHandle& pnh,
-                               const double &imageScaling, const std::string &topic, const std::string &transport):
+                               double imageScaling, 
+                               const std::string &topic, 
+                               const std::string &transport):
   _nh(nh),
   _pnh(pnh),
   _imageScaling(imageScaling),
