@@ -69,7 +69,9 @@ public:
 
   PersonDetector(ros::NodeHandle& nh,
                  ros::NodeHandle& pnh,
-                 double imageScaling = 1.0, const std::string &topic, const std::string &transport);
+                 double imageScaling = 1.0, 
+                 const std::string &topic = "/xtion/rgb/image_raw", 
+                 const std::string &transport="raw");
   virtual ~PersonDetector();
 
 protected:
