@@ -69,7 +69,9 @@ public:
 
   PersonDetector(ros::NodeHandle& nh,
                  ros::NodeHandle& pnh,
-                 double imageScaling = 1.0);
+                 double imageScaling = 1.0, 
+                 const std::string &topic = "/xtion/rgb/image_raw", 
+                 const std::string &transport="raw");
   virtual ~PersonDetector();
 
 protected:
@@ -105,7 +107,9 @@ protected:
 
 PersonDetector::PersonDetector(ros::NodeHandle& nh,
                                ros::NodeHandle& pnh,
-                               double imageScaling):
+                               double imageScaling, 
+                               const std::string &topic, 
+                               const std::string &transport):
   _nh(nh),
   _pnh(pnh),
   _imageScaling(imageScaling),
@@ -116,9 +120,9 @@ PersonDetector::PersonDetector(ros::NodeHandle& nh,
   _hogCPU.reset( new cv::HOGDescriptor );
   _hogCPU->setSVMDetector( cv::HOGDescriptor::getDefaultPeopleDetector() );
 
-  image_transport::TransportHints transportHint("raw");
+  image_transport::TransportHints transportHint(transport);
 
-  _imageSub   = _imageTransport.subscribe("image", 1, &PersonDetector::imageCallback, this, transportHint);
+  _imageSub   = _imageTransport.subscribe(topic, 1, &PersonDetector::imageCallback, this, transportHint);
   _imDebugPub = _privateImageTransport.advertise("debug", 1);
 
   _detectionPub = _pnh.advertise<pal_detection_msgs::Detections2d>("detections", 1);
@@ -258,13 +262,20 @@ int main(int argc, char **argv)
   double freq = 10;
   pnh.param<double>("rate",   freq,    freq);
 
+  std::string imTransport = "raw";
+  pnh.param<std::string>("transport",   imTransport,    imTransport);
+
+  std::string topic = "/xtion/rgb/image_raw";
+  pnh.param<std::string>("image", topic, topic);
+
   ROS_INFO_STREAM("Setting image scale factor to: " << scale);
   ROS_INFO_STREAM("Setting detector max rate to:  " << freq);
+  ROS_INFO_STREAM("Image type:  " << imTransport);
   ROS_INFO(" ");
 
   ROS_INFO_STREAM("Creating person detector ...");
 
-  PersonDetector detector(nh, pnh, scale);
+  PersonDetector detector(nh, pnh, scale, topic, imTransport);
 
   ROS_INFO_STREAM("Spinning to serve callbacks ...");
 
