@@ -15,6 +15,7 @@ catkin_package(
 include_directories(SYSTEM ${catkin_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS})
 
 add_executable(pal_person_detector_opencv src/person_detector.cpp)
+add_dependencies(pal_person_detector_opencv ${catkin_EXPORTED_TARGETS})
 target_link_libraries(pal_person_detector_opencv ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
 
 install(TARGETS pal_person_detector_opencv
